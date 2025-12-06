@@ -2,6 +2,7 @@ let ws;
 let myId;
 let myUsername;
 let peerConnections = {}; // { userId: { pc, dataChannel, ... } }
+let incomingCall = {}; // { userId: true/false }
 let localStream;
 let selectedUserId;
 let selectedUsername;
