@@ -41,10 +41,6 @@ async function join() {
         if (msg.type === 'connected') {
             myId = msg.from;  // Server sends us our ID
             console.log('Connected with ID:', myId);
-            localStream = await navigator.mediaDevices.getUserMedia({ 
-                video: false, 
-                audio: true 
-            });
         } else if (msg.type === 'user-list') {
             updateUserList(msg.users);
         } else {
@@ -402,26 +398,39 @@ async function handleFileSelect(event) {
 
 async function startCall() {
     if (!selectedUserId) return;
-    
+
+    // Request mic here, only when call starts
+    if (!localStream) {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: true
+            });
+        } catch (err) {
+            alert('Microphone access denied');
+            return;
+        }
+    }
+
     const peerConn = peerConnections[selectedUserId];
     if (!peerConn || !peerConn.pc) {
         alert('Connection not established');
         return;
     }
-    
+
     document.getElementById('chatView').classList.add('hidden');
     document.getElementById('callView').classList.remove('hidden');
     document.getElementById('callUsername').textContent = selectedUsername;
     document.getElementById('localVideo').srcObject = localStream;
-    
+
     localStream.getTracks().forEach(track => {
         peerConn.pc.addTrack(track, localStream);
     });
-    
+
     peerConn.pc.ontrack = (event) => {
         document.getElementById('remoteVideo').srcObject = event.streams[0];
     };
-    
+
     const offer = await peerConn.pc.createOffer();
     await peerConn.pc.setLocalDescription(offer);
     send({ type: 'offer', to: selectedUserId, data: offer });
