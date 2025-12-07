@@ -7,7 +7,7 @@ let localStream;
 let selectedUserId;
 let selectedUsername;
 
-// CHANGE: Store message history per user
+// Store message history per user
 let messageHistory = {}; // { userId: [ {text, isSent, timestamp, isFile, fileUrl}, ... ] }
 let unreadCounts = {};   // { userId: number }
 
@@ -77,7 +77,7 @@ async function join() {
     };
 }
 
-// CHANGE: Store the current user list globally
+// Store the current user list globally
 let currentUsers = [];
 
 function updateUserList(users) {
@@ -101,7 +101,7 @@ function updateUserList(users) {
         
         const avatar = user.username.charAt(0).toUpperCase();
         
-        // CHANGE: Show unread badge
+        // Show unread badge
         const unreadBadge = unreadCounts[user.id] > 0 
             ? `<span class="unread-badge">${unreadCounts[user.id]}</span>` 
             : '';
@@ -131,17 +131,30 @@ function selectUser(userId, username) {
     document.getElementById('chatView').classList.remove('hidden');
     document.getElementById('chatUsername').textContent = username;
     
+    // Mobile: hide sidebar, show chat
+    if (window.innerWidth < 768) {
+        document.querySelector('.sidebar').classList.add('mobile-hidden');
+        document.querySelector('.main-content').classList.add('mobile-full');
+    }
+    
     // Load message history
     loadMessageHistory(userId);
     
     // Clear unread count for this user
     unreadCounts[userId] = 0;
     
-    // Update active state
+    // Update active state - FIX: Remove event reference bug
     document.querySelectorAll('.user-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.currentTarget.classList.add('active');
+    // Find and activate the correct user item
+    const userItems = document.querySelectorAll('.user-item');
+    userItems.forEach(item => {
+        const nameDiv = item.querySelector('.user-name');
+        if (nameDiv && nameDiv.textContent.includes(username)) {
+            item.classList.add('active');
+        }
+    });
     
     // Re-render user list to remove badge
     updateUserList();
@@ -152,6 +165,16 @@ function selectUser(userId, username) {
     // Establish P2P connection if not exists
     if (!peerConnections[userId]) {
         initiatePeerConnection(userId);
+    }
+}
+
+function goBack() {
+    // Mobile: show sidebar, hide chat
+    if (window.innerWidth < 768) {
+        document.querySelector('.sidebar').classList.remove('mobile-hidden');
+        document.querySelector('.main-content').classList.remove('mobile-full');
+        document.getElementById('chatView').classList.add('hidden');
+        document.getElementById('emptyState').classList.remove('hidden');
     }
 }
 
@@ -168,7 +191,7 @@ function updateConnectionStatus(userId) {
     }
 }
 
-// CHANGE: New function to load message history
+// Load message history
 function loadMessageHistory(userId) {
     const messagesContainer = document.getElementById('messages');
     messagesContainer.innerHTML = '';
@@ -256,7 +279,7 @@ function setupDataChannel(dataChannel, peerId) {
             const msg = JSON.parse(event.data);
             
             if (msg.type === 'text') {
-                // CHANGE: Store and display message (even if chat not open)
+                // Store and display message (even if chat not open)
                 storeMessage(peerId, msg.data, false);
                 
                 // Only display if currently viewing this chat
@@ -275,7 +298,7 @@ function setupDataChannel(dataChannel, peerId) {
                 const blob = new Blob(fileChunks);
                 const url = URL.createObjectURL(blob);
                 
-                // CHANGE: Store file message
+                // Store file message
                 storeMessage(incomingFileFrom, `📎 ${incomingFile.name}`, false, true, url, incomingFile.name);
                 
                 if (selectedUserId === incomingFileFrom) {
@@ -299,7 +322,7 @@ function setupDataChannel(dataChannel, peerId) {
     };
 }
 
-// CHANGE: Store message in history
+// Store message in history
 function storeMessage(userId, text, isSent, isFile = false, fileUrl = null, filename = null) {
     if (!messageHistory[userId]) {
         messageHistory[userId] = [];
@@ -315,7 +338,7 @@ function storeMessage(userId, text, isSent, isFile = false, fileUrl = null, file
     });
 }
 
-// CHANGE: Display message in DOM (separate from storing)
+// Display message in DOM (separate from storing)
 function displayMessageInDOM(text, isSent, timestamp, isFile = false, fileUrl = null, filename = null) {
     const messages = document.getElementById('messages');
     const msg = document.createElement('div');
@@ -350,7 +373,7 @@ function sendMessage() {
     if (peerConn && peerConn.dataChannel && peerConn.dataChannel.readyState === 'open') {
         peerConn.dataChannel.send(JSON.stringify({ type: 'text', data: text }));
         
-        // CHANGE: Store and display
+        // Store and display
         storeMessage(selectedUserId, text, true);
         displayMessageInDOM(text, true, new Date());
         
@@ -406,7 +429,7 @@ async function handleFileSelect(event) {
             dataChannel.send(JSON.stringify({ type: 'file-end' }));
             const url = URL.createObjectURL(file);
             
-            // CHANGE: Store and display
+            // Store and display
             storeMessage(selectedUserId, `📎 ${file.name}`, true, true, url, file.name);
             displayMessageInDOM(`📎 ${file.name}`, true, new Date(), true, url, file.name);
         }
@@ -418,6 +441,9 @@ async function handleFileSelect(event) {
     };
     
     readSlice(0);
+    
+    // Reset file input
+    event.target.value = '';
 }
 
 async function startCall() {
@@ -512,5 +538,7 @@ function endCall() {
 }
 
 function send(message) {
-    ws.send(JSON.stringify(message));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+    }
 }
