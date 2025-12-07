@@ -1,3 +1,6 @@
+
+
+## Requirements
 If you dont have your IP exposed, you can create a tunnel from your localhost to the world using cloudflared.
 
 If you don't have cloudflared installed yet please:
@@ -12,17 +15,19 @@ cloudflared --version
 cloudflared login
 ```
 
+## Setup the public address
+If you don't have your exposed IP:
 ```{bash}
 # Create a temporary tunnel. This command will output the address of your backend, modify your frontend to point to this address
 cloudflared tunnel --url http://localhost:8080
 ```
 
-To build and run,
+## Run the container
 ```{bash}
 docker compose up --build
 ```
 
-Ideally, we should automate this process
+Ideally, we should automate this process to setup and run the container with the modified frontend.
 
 
 Access to the frontend in:
