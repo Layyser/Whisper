@@ -475,7 +475,13 @@ function endCall() {
             });
         }
     }
-    
+
+    // STOP the mic
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('callView').classList.add('hidden');
     document.getElementById('chatView').classList.remove('hidden');
