@@ -6,4 +6,27 @@ services:
     container_name: whisper-backend
     ports:
       - "8080:8080"
-    restart: unless-stopped
+    networks:
+      - whisper-net
+
+  caddy:
+    image: caddy:latest
+    container_name: whisper-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    networks:
+      - whisper-net
+
+networks:
+  whisper-net:
+
+volumes:
+  caddy_data:
+  caddy_config:
