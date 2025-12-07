@@ -20,9 +20,6 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /app/whisper .
 
-# Copy frontend
-COPY --from=builder /app/frontend ./frontend
-
 EXPOSE 8080
 
 CMD ["./whisper"]
