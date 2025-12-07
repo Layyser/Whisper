@@ -17,7 +17,31 @@ let fileChunks = [];
 let incomingFileFrom = null; // Track who is sending the file
 
 const config = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80",
+        username: "24d95e537cd2acc083268cdb",
+        credential: "O9Mo4JnvwlmyxXJA",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+        username: "24d95e537cd2acc083268cdb",
+        credential: "O9Mo4JnvwlmyxXJA",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "24d95e537cd2acc083268cdb",
+        credential: "O9Mo4JnvwlmyxXJA",
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+        username: "24d95e537cd2acc083268cdb",
+        credential: "O9Mo4JnvwlmyxXJA",
+      },
+    ],
 };
 
 async function join() {
