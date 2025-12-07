@@ -178,17 +178,71 @@ function goBack() {
     }
 }
 
-function updateConnectionStatus(userId) {
+async function checkSelectedCandidate(pc, peerId) {
+    const stats = await pc.getStats();
+    
+    stats.forEach(report => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            console.log(`✅ Active connection with ${peerId}:`, report);
+        }
+        
+        if (report.type === 'local-candidate') {
+            console.log(`Local candidate:`, {
+                type: report.candidateType,
+                protocol: report.protocol,
+                address: report.address || report.ip,
+                port: report.port
+            });
+        }
+        
+        if (report.type === 'remote-candidate') {
+            console.log(`Remote candidate:`, {
+                type: report.candidateType,
+                protocol: report.protocol,
+                address: report.address || report.ip,
+                port: report.port
+            });
+        }
+    });
+}
+
+async function updateConnectionStatus(userId) {
     const peerConn = peerConnections[userId];
     const statusDiv = document.getElementById('chatUsername');
     
     if (!peerConn || !peerConn.dataChannel) {
         statusDiv.innerHTML = `${selectedUsername} <span style="color: #f39c12; font-size: 12px;">● Connecting...</span>`;
     } else if (peerConn.dataChannel.readyState === 'open') {
-        statusDiv.innerHTML = `${selectedUsername} <span style="color: #27ae60; font-size: 12px;">● Connected</span>`;
+        // Check connection type
+        const connectionType = await getConnectionType(peerConn.pc);
+        const typeEmoji = connectionType === 'relay' ? '🔄' : '⚡';
+        const typeText = connectionType === 'relay' ? 'TURN Relay' : 'P2P Direct';
+        
+        statusDiv.innerHTML = `${selectedUsername} <span style="color: #27ae60; font-size: 12px;">● Connected ${typeEmoji} ${typeText}</span>`;
     } else {
         statusDiv.innerHTML = `${selectedUsername} <span style="color: #f39c12; font-size: 12px;">● Connecting...</span>`;
     }
+}
+
+async function getConnectionType(pc) {
+    const stats = await pc.getStats();
+    let connectionType = 'unknown';
+    
+    stats.forEach(report => {
+        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            // Get the local candidate ID from the pair
+            const localCandidateId = report.localCandidateId;
+            
+            // Find the local candidate details
+            stats.forEach(candidate => {
+                if (candidate.id === localCandidateId && candidate.type === 'local-candidate') {
+                    connectionType = candidate.candidateType; // 'host', 'srflx', or 'relay'
+                }
+            });
+        }
+    });
+    
+    return connectionType;
 }
 
 // Load message history
@@ -223,6 +277,32 @@ async function initiatePeerConnection(userId) {
 function createPeerConnection(peerId, includeVideo = false) {
     const pc = new RTCPeerConnection(config);
 
+    pc.onconnectionstatechange = () => {
+        console.log(`Connection state with ${peerId}:`, pc.connectionState);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState);
+    };
+
+    // NEW: Check which candidate pair is actually being used
+    pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+            console.log('ICE Candidate:', {
+                type: event.candidate.type,
+                protocol: event.candidate.protocol,
+                address: event.candidate.address,
+                port: event.candidate.port,
+                candidate: event.candidate.candidate
+            });
+            send({ type: 'ice-candidate', to: peerId, data: event.candidate });
+        } else {
+            // All candidates gathered, check which one is selected
+            console.log('ICE gathering complete');
+            setTimeout(() => checkSelectedCandidate(pc, peerId), 2000);
+        }
+    };
+
     const dataChannel = pc.createDataChannel("chat");
     setupDataChannel(dataChannel, peerId);
     
@@ -243,6 +323,8 @@ function createPeerConnection(peerId, includeVideo = false) {
 
     pc.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log('ICE Candidate Type:', event.candidate.type);
+            console.log('Full candidate:', event.candidate.candidate);
             send({ type: 'ice-candidate', to: peerId, data: event.candidate });
         }
     };
