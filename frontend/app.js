@@ -27,7 +27,7 @@ async function join() {
         return;
     }
 
-    ws = new WebSocket(`wss://192.168.0.39:8080/ws?username=${myUsername}`);
+    ws = new WebSocket(`wss://configurations-cove-seeks-facts.trycloudflare.com/ws?username=${myUsername}`);
 
     ws.onopen = async () => {
         document.getElementById('login').classList.add('hidden');
