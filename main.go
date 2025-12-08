@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 )
 
@@ -27,6 +28,23 @@ func main() {
 		handleWebSocket(hub, w, r)
 	})
 
-	fmt.Println("Server on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Comprovar si existeixen els certificats per a HTTPS
+	// Check if certificates exist for HTTPS
+	certFile := "certs/cert.pem"
+	keyFile := "certs/key.pem"
+
+	if _, err := os.Stat(certFile); err == nil {
+		if _, err := os.Stat(keyFile); err == nil {
+			fmt.Printf("Server on https://localhost:%s (Secure)\n", port)
+			log.Fatal(http.ListenAndServeTLS(":"+port, certFile, keyFile, nil))
+		}
+	}
+
+	fmt.Printf("Server on http://localhost:%s (Not Secure - Media devices might fail)\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

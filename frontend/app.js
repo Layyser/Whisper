@@ -7,14 +7,14 @@ let localStream;
 let selectedUserId;
 let selectedUsername;
 
-// Store message history per user
+// Historial de missatges per usuari
 let messageHistory = {}; // { userId: [ {text, isSent, timestamp, isFile, fileUrl}, ... ] }
 let unreadCounts = {};   // { userId: number }
 
-// File receiving state
+// Estat de recepció de fitxers
 let incomingFile = null;
 let fileChunks = [];
-let incomingFileFrom = null; // Track who is sending the file
+let incomingFileFrom = null; // Rastrejar qui envia el fitxer
 
 const config = {
     iceServers: [
@@ -45,43 +45,75 @@ const config = {
 };
 
 async function join() {
+    // Check for media permissions/HTTPS context
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('Warning: Media devices are not accessible. This usually happens when not using HTTPS or if permissions are blocked. You may be able to chat but video/audio calls will fail.');
+    }
+
     myUsername = document.getElementById('username').value.trim();
+    const roomName = document.getElementById('room').value.trim();
+
     if (!myUsername) {
-        alert('Please enter a username');
+        showToast('Please enter a username');
+        return;
+    }
+    if (!roomName) {
+        showToast('Please enter a room name');
         return;
     }
 
-    ws = new WebSocket(`wss://configurations-cove-seeks-facts.trycloudflare.com/ws?username=${myUsername}`);
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    ws = new WebSocket(`${protocol}//${host}/ws?username=${encodeURIComponent(myUsername)}&room=${encodeURIComponent(roomName)}`);
 
     ws.onopen = async () => {
         document.getElementById('login').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
-        document.getElementById('myUsername').textContent = myUsername;
+        document.getElementById('myUsername').textContent = `${myUsername} (Room: ${roomName})`;
     };
 
     ws.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
 
         if (msg.type === 'connected') {
-            myId = msg.from;  // Server sends us our ID
-            console.log('Connected with ID:', myId);
+            myId = msg.from;  // El servidor ens envia el nostre ID
+            console.log('Connectat amb ID:', myId);
         } else if (msg.type === 'user-list') {
             updateUserList(msg.users);
+        } else if (msg.type === 'system') {
+            showToast(msg.content);
         } else {
             await handleSignaling(msg);
         }
     };
 
     ws.onclose = () => {
-        alert('Disconnected from server');
+        showToast('Disconnected from server');
     };
 }
 
-// Store the current user list globally
+function showToast(message) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.5s ease';
+        setTimeout(() => toast.remove(), 500);
+    }, 3000);
+}
+
+// Emmagatzemar la llista d'usuaris actual globalment
 let currentUsers = [];
 
 function updateUserList(users) {
-    // If users is provided, update the stored list
+    // Si es proporcionen usuaris, actualitzar la llista emmagatzemada
     if (users && users.length > 0) {
         currentUsers = users;
     }
@@ -101,7 +133,7 @@ function updateUserList(users) {
         
         const avatar = user.username.charAt(0).toUpperCase();
         
-        // Show unread badge
+        // Mostrar insígnia de no llegits
         const unreadBadge = unreadCounts[user.id] > 0 
             ? `<span class="unread-badge">${unreadCounts[user.id]}</span>` 
             : '';
@@ -131,23 +163,20 @@ function selectUser(userId, username) {
     document.getElementById('chatView').classList.remove('hidden');
     document.getElementById('chatUsername').textContent = username;
     
-    // Mobile: hide sidebar, show chat
-    if (window.innerWidth < 768) {
-        document.querySelector('.sidebar').classList.add('mobile-hidden');
-        document.querySelector('.main-content').classList.add('mobile-full');
-    }
+    // Mobile: Slide in main content
+    document.querySelector('.main-content').classList.add('active');
     
-    // Load message history
+    // Carregar historial de missatges
     loadMessageHistory(userId);
     
-    // Clear unread count for this user
+    // Netejar recompte de no llegits per a aquest usuari
     unreadCounts[userId] = 0;
     
-    // Update active state - FIX: Remove event reference bug
+    // Actualitzar estat actiu
     document.querySelectorAll('.user-item').forEach(item => {
         item.classList.remove('active');
     });
-    // Find and activate the correct user item
+    // Trobar i activar l'element d'usuari correcte
     const userItems = document.querySelectorAll('.user-item');
     userItems.forEach(item => {
         const nameDiv = item.querySelector('.user-name');
@@ -156,26 +185,33 @@ function selectUser(userId, username) {
         }
     });
     
-    // Re-render user list to remove badge
+    // Re-renderitzar llista d'usuaris per eliminar insígnia
     updateUserList();
     
-    // Update connection status
+    // Actualitzar estat de connexió
     updateConnectionStatus(userId);
     
-    // Establish P2P connection if not exists
+    // Establir connexió P2P si no existeix
     if (!peerConnections[userId]) {
         initiatePeerConnection(userId);
     }
 }
 
 function goBack() {
-    // Mobile: show sidebar, hide chat
-    if (window.innerWidth < 768) {
-        document.querySelector('.sidebar').classList.remove('mobile-hidden');
-        document.querySelector('.main-content').classList.remove('mobile-full');
+    // Mobile: Slide out main content
+    document.querySelector('.main-content').classList.remove('active');
+    
+    // Deselect user after animation
+    setTimeout(() => {
+        selectedUserId = null;
+        selectedUsername = null;
+        document.querySelectorAll('.user-item').forEach(item => item.classList.remove('active'));
+        
+        // Reset views to empty state
         document.getElementById('chatView').classList.add('hidden');
+        document.getElementById('callView').classList.add('hidden'); // Ensure call view is hidden too
         document.getElementById('emptyState').classList.remove('hidden');
-    }
+    }, 300);
 }
 
 async function checkSelectedCandidate(pc, peerId) {
@@ -183,25 +219,7 @@ async function checkSelectedCandidate(pc, peerId) {
     
     stats.forEach(report => {
         if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-            console.log(`✅ Active connection with ${peerId}:`, report);
-        }
-        
-        if (report.type === 'local-candidate') {
-            console.log(`Local candidate:`, {
-                type: report.candidateType,
-                protocol: report.protocol,
-                address: report.address || report.ip,
-                port: report.port
-            });
-        }
-        
-        if (report.type === 'remote-candidate') {
-            console.log(`Remote candidate:`, {
-                type: report.candidateType,
-                protocol: report.protocol,
-                address: report.address || report.ip,
-                port: report.port
-            });
+            console.log(`✅ Connexió activa amb ${peerId}:`, report);
         }
     });
 }
@@ -213,7 +231,7 @@ async function updateConnectionStatus(userId) {
     if (!peerConn || !peerConn.dataChannel) {
         statusDiv.innerHTML = `${selectedUsername} <span style="color: #f39c12; font-size: 12px;">● Connecting...</span>`;
     } else if (peerConn.dataChannel.readyState === 'open') {
-        // Check connection type
+        // Comprovar tipus de connexió
         const connectionType = await getConnectionType(peerConn.pc);
         const typeEmoji = connectionType === 'relay' ? '🔄' : '⚡';
         const typeText = connectionType === 'relay' ? 'TURN Relay' : 'P2P Direct';
@@ -230,13 +248,13 @@ async function getConnectionType(pc) {
     
     stats.forEach(report => {
         if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-            // Get the local candidate ID from the pair
+            // Obtenir l'ID del candidat local del parell
             const localCandidateId = report.localCandidateId;
             
-            // Find the local candidate details
+            // Trobar els detalls del candidat local
             stats.forEach(candidate => {
                 if (candidate.id === localCandidateId && candidate.type === 'local-candidate') {
-                    connectionType = candidate.candidateType; // 'host', 'srflx', or 'relay'
+                    connectionType = candidate.candidateType; // 'host', 'srflx', o 'relay'
                 }
             });
         }
@@ -245,17 +263,17 @@ async function getConnectionType(pc) {
     return connectionType;
 }
 
-// Load message history
+// Carregar historial de missatges
 function loadMessageHistory(userId) {
     const messagesContainer = document.getElementById('messages');
     messagesContainer.innerHTML = '';
     
-    // Initialize history array if doesn't exist
+    // Inicialitzar array d'historial si no existeix
     if (!messageHistory[userId]) {
         messageHistory[userId] = [];
     }
     
-    // Display all stored messages for this user
+    // Mostrar tots els missatges emmagatzemats per a aquest usuari
     messageHistory[userId].forEach(msg => {
         if (msg.isFile) {
             displayMessageInDOM(msg.text, msg.isSent, msg.timestamp, true, msg.fileUrl, msg.filename);
@@ -278,27 +296,20 @@ function createPeerConnection(peerId, includeVideo = false) {
     const pc = new RTCPeerConnection(config);
 
     pc.onconnectionstatechange = () => {
-        console.log(`Connection state with ${peerId}:`, pc.connectionState);
+        console.log(`Estat de connexió amb ${peerId}:`, pc.connectionState);
     };
 
     pc.oniceconnectionstatechange = () => {
-        console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState);
+        console.log(`Estat de connexió ICE amb ${peerId}:`, pc.iceConnectionState);
     };
 
-    // NEW: Check which candidate pair is actually being used
+    // NOU: Comprovar quin parell de candidats s'està utilitzant realment
     pc.onicecandidate = async (event) => {
         if (event.candidate) {
-            console.log('ICE Candidate:', {
-                type: event.candidate.type,
-                protocol: event.candidate.protocol,
-                address: event.candidate.address,
-                port: event.candidate.port,
-                candidate: event.candidate.candidate
-            });
             send({ type: 'ice-candidate', to: peerId, data: event.candidate });
         } else {
-            // All candidates gathered, check which one is selected
-            console.log('ICE gathering complete');
+            // Tots els candidats recopilats, comprovar quin està seleccionat
+            console.log('Recopilació ICE completa');
             setTimeout(() => checkSelectedCandidate(pc, peerId), 2000);
         }
     };
@@ -311,24 +322,17 @@ function createPeerConnection(peerId, includeVideo = false) {
     }
     peerConnections[peerId].dataChannel = dataChannel;
 
-    if (includeVideo && localStream) {
+    // Gestionar pistes de vídeo/àudio si existeixen
+    if (localStream) {
         localStream.getTracks().forEach(track => {
             pc.addTrack(track, localStream);
         });
-
-        pc.ontrack = (event) => {
-            document.getElementById('remoteVideo').srcObject = event.streams[0];
-        };
     }
 
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log('ICE Candidate Type:', event.candidate.type);
-            console.log('Full candidate:', event.candidate.candidate);
-            send({ type: 'ice-candidate', to: peerId, data: event.candidate });
-        }
+    pc.ontrack = (event) => {
+        document.getElementById('remoteVideo').srcObject = event.streams[0];
     };
-    
+
     pc.ondatachannel = (event) => {
         setupDataChannel(event.channel, peerId);
         if (!peerConnections[peerId]) {
@@ -371,6 +375,28 @@ function setupDataChannel(dataChannel, peerId) {
                     // Increment unread count
                     unreadCounts[peerId] = (unreadCounts[peerId] || 0) + 1;
                     updateUserList(); // Refresh to show badge
+                }
+            } else if (msg.type === 'ping') {
+                // Respond with pong
+                dataChannel.send(JSON.stringify({
+                    type: 'pong',
+                    timestamp: msg.timestamp
+                }));
+            } else if (msg.type === 'pong') {
+                // Calculate latency
+                const latency = Date.now() - msg.timestamp;
+                showToast(`P2P Latency: ${latency}ms ⚡`);
+                
+                // Also show in chat as a system message
+                if (selectedUserId === peerId) {
+                    const div = document.createElement('div');
+                    div.className = 'message system-message';
+                    div.textContent = `⚡ P2P Round-Trip Time: ${latency}ms`;
+                    div.style.textAlign = 'center';
+                    div.style.color = '#2ecc71';
+                    div.style.fontSize = '0.8em';
+                    div.style.margin = '10px 0';
+                    document.getElementById('messages').appendChild(div);
                 }
             } else if (msg.type === 'file-start') {
                 incomingFile = msg;
@@ -474,6 +500,22 @@ function handleEnter(event) {
     }
 }
 
+function sendPing() {
+    if (!selectedUserId || !peerConnections[selectedUserId]) return;
+    
+    const dc = peerConnections[selectedUserId].dataChannel;
+    if (dc && dc.readyState === 'open') {
+        const timestamp = Date.now();
+        dc.send(JSON.stringify({
+            type: 'ping',
+            timestamp: timestamp
+        }));
+        showToast('Ping sent... ⚡');
+    } else {
+        showToast('P2P Data Channel not ready');
+    }
+}
+
 function sendFile() {
     document.getElementById('fileInput').click();
 }
@@ -484,7 +526,7 @@ async function handleFileSelect(event) {
     
     const peerConn = peerConnections[selectedUserId];
     if (!peerConn || !peerConn.dataChannel || peerConn.dataChannel.readyState !== 'open') {
-        alert('Connection not ready');
+        showToast('Connection not ready');
         return;
     }
     
@@ -528,25 +570,26 @@ async function handleFileSelect(event) {
     event.target.value = '';
 }
 
-async function startCall() {
+async function startCall(videoEnabled = false) {
     if (!selectedUserId) return;
 
-    // Request mic here, only when call starts
+    // Sol·licitar micròfon i càmera aquí, només quan comença la trucada
     if (!localStream) {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({
-                video: false,
+                video: videoEnabled,
                 audio: true
             });
         } catch (err) {
-            alert('Microphone access denied');
+            console.error("Error accedint als dispositius:", err);
+            showToast('Microphone/Camera access denied or unavailable. Please check browser permissions and ensure you are using HTTPS.');
             return;
         }
     }
 
     const peerConn = peerConnections[selectedUserId];
     if (!peerConn || !peerConn.pc) {
-        alert('Connection not established');
+        showToast('Connection not established');
         return;
     }
 
@@ -554,7 +597,11 @@ async function startCall() {
     document.getElementById('callView').classList.remove('hidden');
     document.getElementById('callUsername').textContent = selectedUsername;
     document.getElementById('localVideo').srcObject = localStream;
+    
+    // Mostrar/amagar vídeo local segons el tipus de trucada
+    document.getElementById('localVideo').style.display = videoEnabled ? 'block' : 'none';
 
+    // Afegir pistes a la connexió
     localStream.getTracks().forEach(track => {
         peerConn.pc.addTrack(track, localStream);
     });
@@ -566,12 +613,84 @@ async function startCall() {
     const offer = await peerConn.pc.createOffer();
     await peerConn.pc.setLocalDescription(offer);
     send({ type: 'offer', to: selectedUserId, data: offer });
+
+    // Iniciar monitorització d'estadístiques P2P
+    startStatsMonitoring(peerConn.pc);
+}
+
+let statsInterval;
+
+function startStatsMonitoring(pc) {
+    if (statsInterval) clearInterval(statsInterval);
+    
+    statsInterval = setInterval(async () => {
+        if (!pc) return;
+        
+        const stats = await pc.getStats();
+        let activeCandidatePair = null;
+        let bitrate = 0;
+
+        stats.forEach(report => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                activeCandidatePair = report;
+            }
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                // Calcular bitrate aproximat (bytes rebuts)
+                // Això és una simplificació, per fer-ho bé caldria comparar amb l'anterior
+            }
+        });
+
+        if (activeCandidatePair) {
+            // Obtenir tipus de candidat local i remot
+            // Això demostra que és P2P si el tipus és 'host' o 'srflx'
+            document.getElementById('connStatus').textContent = 'Connected (Encrypted)';
+            document.getElementById('connStatus').style.color = '#00ff00';
+            
+            // Intentar esbrinar el tipus (local vs relay)
+            // Necessitem buscar els candidats associats al parell
+            const localCand = stats.get(activeCandidatePair.localCandidateId);
+            const remoteCand = stats.get(activeCandidatePair.remoteCandidateId);
+            
+            if (localCand && remoteCand) {
+                const type = localCand.candidateType === 'relay' || remoteCand.candidateType === 'relay' 
+                    ? 'TURN Relay (Server)' 
+                    : 'P2P Direct (Local/STUN)';
+                
+                document.getElementById('connType').textContent = `${type}`;
+                document.getElementById('connType').title = `Local: ${localCand.ip}:${localCand.port} <-> Remote: ${remoteCand.ip}:${remoteCand.port}`;
+            }
+        }
+    }, 1000);
+}
+
+function toggleAudio() {
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+            audioTrack.enabled = !audioTrack.enabled;
+            document.getElementById('audioBtn').classList.toggle('muted');
+        }
+    }
+}
+
+function toggleVideo() {
+    if (localStream) {
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (videoTrack) {
+            videoTrack.enabled = !videoTrack.enabled;
+            document.getElementById('videoBtn').classList.toggle('muted');
+        }
+    }
 }
 
 async function handleSignaling(msg) {
     let peerConn = peerConnections[msg.from];
     
     if (msg.type === 'offer') {
+        // Si rebem una oferta, pot ser una trucada entrant
+        // Hauríem de preguntar a l'usuari si vol acceptar, però per ara acceptem automàticament
+        // i mostrem la vista de trucada si hi ha pistes de vídeo/àudio
+        
         if (!peerConn) {
             const pc = createPeerConnection(msg.from, false);
             peerConnections[msg.from] = { pc };
@@ -579,9 +698,40 @@ async function handleSignaling(msg) {
         }
         
         await peerConn.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+        
+        // Si és una trucada (té pistes remotes), preparem la nostra resposta
+        // Nota: En una app real, aquí sonaria el telèfon
+        
+        // Per respondre, necessitem el nostre stream si volem parlar
+        if (!localStream) {
+             try {
+                // Per defecte responem amb àudio, vídeo si l'oferta en té? 
+                // Simplificació: responem amb el que puguem (àudio mínim)
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true, // Intentem vídeo també
+                    audio: true
+                });
+                
+                document.getElementById('localVideo').srcObject = localStream;
+                
+                localStream.getTracks().forEach(track => {
+                    peerConn.pc.addTrack(track, localStream);
+                });
+            } catch (e) {
+                console.log("No s'ha pogut obtenir mitjans locals per respondre", e);
+            }
+        }
+
         const answer = await peerConn.pc.createAnswer();
         await peerConn.pc.setLocalDescription(answer);
         send({ type: 'answer', to: msg.from, data: answer });
+        
+        // Mostrar vista de trucada si estem en aquesta conversa
+        if (selectedUserId === msg.from) {
+             document.getElementById('chatView').classList.add('hidden');
+             document.getElementById('callView').classList.remove('hidden');
+             document.getElementById('callUsername').textContent = selectedUsername;
+        }
         
     } else if (msg.type === 'answer') {
         if (peerConn && peerConn.pc) {
@@ -591,32 +741,58 @@ async function handleSignaling(msg) {
         if (peerConn && peerConn.pc) {
             await peerConn.pc.addIceCandidate(new RTCIceCandidate(msg.data));
         }
+    } else if (msg.type === 'end-call') {
+        endCall(false);
+        showToast('Call ended');
     }
 }
 
-function endCall() {
-    if (selectedUserId && peerConnections[selectedUserId]) {
-        const peerConn = peerConnections[selectedUserId];
-        
-        if (peerConn.pc) {
-            const senders = peerConn.pc.getSenders();
-            senders.forEach(sender => {
-                if (sender.track) {
-                    peerConn.pc.removeTrack(sender);
-                }
-            });
+function endCall(notifyPeer = true) {
+    if (statsInterval) clearInterval(statsInterval);
+    
+    if (selectedUserId) {
+        if (notifyPeer) {
+            send({ type: 'end-call', to: selectedUserId });
+        }
+
+        if (peerConnections[selectedUserId]) {
+            const peerConn = peerConnections[selectedUserId];
+            
+            if (peerConn.pc) {
+                const senders = peerConn.pc.getSenders();
+                senders.forEach(sender => {
+                    if (sender.track) {
+                        peerConn.pc.removeTrack(sender);
+                    }
+                });
+                peerConn.pc.close(); // Close the connection properly
+                delete peerConnections[selectedUserId]; // Remove from map
+            }
         }
     }
 
-    // STOP the mic
+    // ATURAR el micròfon i càmera
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
 
     document.getElementById('remoteVideo').srcObject = null;
+    document.getElementById('localVideo').srcObject = null;
     document.getElementById('callView').classList.add('hidden');
     document.getElementById('chatView').classList.remove('hidden');
+    
+    // Reset botons
+    const audioBtn = document.getElementById('audioBtn');
+    const videoBtn = document.getElementById('videoBtn');
+    if (audioBtn) {
+        audioBtn.classList.remove('muted');
+        audioBtn.textContent = '🎤';
+    }
+    if (videoBtn) {
+        videoBtn.classList.remove('muted');
+        videoBtn.textContent = '📷';
+    }
 }
 
 function send(message) {

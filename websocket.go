@@ -18,21 +18,23 @@ func handleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	username := r.URL.Query().Get("username")
-	if username == "" {
+	roomID := r.URL.Query().Get("room")
+	if username == "" || roomID == "" {
 		conn.Close()
 		return
 	}
 
-	id := uuid.New().String() // Generate secure UUID
+	id := uuid.New().String() // Generar UUID segur
 
 	client := &Client{
 		ID:       id,
 		Username: username,
+		RoomID:   roomID,
 		Conn:     conn,
 		Send:     make(chan []byte, 256),
 	}
 
-	// Tell client their ID
+	// Informar al client del seu ID
 	conn.WriteJSON(Message{
 		Type: "connected",
 		From: id,
@@ -64,6 +66,7 @@ func readPump(client *Client, hub *Hub) {
 			break
 		}
 		msg.From = client.ID
+		msg.RoomID = client.RoomID
 		hub.message <- msg
 	}
 }

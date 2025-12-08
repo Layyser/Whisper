@@ -11,9 +11,15 @@
         <div class="login-box">
             <h1>Join Chat</h1>
             <input type="text" id="username" placeholder="Enter your username" />
+            <input type="text" id="room" placeholder="Enter room name" />
             <button onclick="join()">Join</button>
+            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
+                Note: If using HTTPS with a self-signed certificate, please accept the security warning to enable microphone/camera access.
+            </p>
         </div>
     </div>
+
+    <div id="toast-container" class="toast-container"></div>
 
     <div id="app" class="hidden">
         <div class="sidebar">
@@ -36,8 +42,10 @@
                     <button onclick="goBack()" class="back-btn">← Back</button>
                     <h3 id="chatUsername"></h3>
                     <div class="chat-actions">
-                        <button onclick="startCall()" class="call-btn">📞</button>
-                        <button onclick="sendFile()" class="file-btn">📎</button>
+                        <button onclick="startCall(false)" class="call-btn" title="Audio Call">📞</button>
+                        <button onclick="startCall(true)" class="video-btn" title="Video Call">📹</button>
+                        <button onclick="sendPing()" class="ping-btn" title="Test P2P Latency">⚡</button>
+                        <button onclick="sendFile()" class="file-btn" title="Send File">📎</button>
                     </div>
                 </div>
 
@@ -52,11 +60,20 @@
             <div id="callView" class="call-view hidden">
                 <div class="call-header">
                     <h3 id="callUsername"></h3>
-                    <button onclick="endCall()" class="end-call-btn">End Call</button>
+                </div>
+                <div class="p2p-stats" id="p2pStats">
+                    <div class="stat-item">Status: <span id="connStatus">Connecting...</span></div>
+                    <div class="stat-item">Type: <span id="connType">-</span></div>
+                    <div class="stat-item">Bitrate: <span id="connBitrate">0 kbps</span></div>
                 </div>
                 <div class="videos">
                     <video id="remoteVideo" autoplay playsinline></video>
                     <video id="localVideo" autoplay muted playsinline></video>
+                </div>
+                <div class="call-controls">
+                    <button onclick="toggleAudio()" id="audioBtn" class="control-btn">🎤</button>
+                    <button onclick="toggleVideo()" id="videoBtn" class="control-btn">📷</button>
+                    <button onclick="endCall()" class="end-call-btn" title="Hang Up">📞</button>
                 </div>
             </div>
         </div>

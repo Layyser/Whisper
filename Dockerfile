@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25.5 AS builder
+FROM golang:1.23 AS builder
 
 WORKDIR /app
 
@@ -19,6 +19,8 @@ WORKDIR /app
 
 # Copy binary
 COPY --from=builder /app/whisper .
+COPY frontend ./frontend
+COPY certs ./certs
 
 EXPOSE 8080
 
