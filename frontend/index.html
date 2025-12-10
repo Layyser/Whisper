@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Whisper</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,10 +13,22 @@
             <h1>Join Chat</h1>
             <input type="text" id="username" placeholder="Enter your username" />
             <input type="text" id="room" placeholder="Enter room name" />
+            <input type="password" id="password" placeholder="Room password (optional)" />
             <button onclick="join()">Join</button>
             <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
                 Note: If using HTTPS with a self-signed certificate, please accept the security warning to enable microphone/camera access.
             </p>
+        </div>
+    </div>
+
+    <div id="incomingCallModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Incoming Call...</h3>
+            <p id="callerName">User is calling you</p>
+            <div class="modal-actions">
+                <button onclick="acceptCall()" class="accept-btn">Accept</button>
+                <button onclick="rejectCall()" class="reject-btn">Reject</button>
+            </div>
         </div>
     </div>
 
@@ -39,13 +52,13 @@
 
             <div id="chatView" class="chat-view hidden">
                 <div class="chat-header">
-                    <button onclick="goBack()" class="back-btn">← Back</button>
+                    <button onclick="goBack()" class="back-btn"><i class="fas fa-arrow-left"></i></button>
                     <h3 id="chatUsername"></h3>
                     <div class="chat-actions">
-                        <button onclick="startCall(false)" class="call-btn" title="Audio Call">📞</button>
-                        <button onclick="startCall(true)" class="video-btn" title="Video Call">📹</button>
-                        <button onclick="sendPing()" class="ping-btn" title="Test P2P Latency">⚡</button>
-                        <button onclick="sendFile()" class="file-btn" title="Send File">📎</button>
+                        <button onclick="requestCall(false)" class="call-btn" title="Audio Call"><i class="fas fa-phone"></i></button>
+                        <button onclick="requestCall(true)" class="video-btn" title="Video Call"><i class="fas fa-video"></i></button>
+                        <button onclick="sendPing()" class="ping-btn" title="Test P2P Latency"><i class="fas fa-bolt"></i></button>
+                        <button onclick="sendFile()" class="file-btn" title="Send File"><i class="fas fa-paperclip"></i></button>
                     </div>
                 </div>
 
@@ -71,9 +84,9 @@
                     <video id="localVideo" autoplay muted playsinline></video>
                 </div>
                 <div class="call-controls">
-                    <button onclick="toggleAudio()" id="audioBtn" class="control-btn">🎤</button>
-                    <button onclick="toggleVideo()" id="videoBtn" class="control-btn">📷</button>
-                    <button onclick="endCall()" class="end-call-btn" title="Hang Up">📞</button>
+                    <button onclick="toggleAudio()" id="audioBtn" class="control-btn"><i class="fas fa-microphone"></i></button>
+                    <button onclick="toggleVideo()" id="videoBtn" class="control-btn"><i class="fas fa-video"></i></button>
+                    <button onclick="endCall()" class="end-call-btn" title="Hang Up"><i class="fas fa-phone-slash"></i></button>
                 </div>
             </div>
         </div>
@@ -81,6 +94,6 @@
 
     <input type="file" id="fileInput" style="display: none" onchange="handleFileSelect(event)" />
 
-    <script src="app.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>

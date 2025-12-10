@@ -31,10 +31,22 @@ func (h *Hub) run() {
 			room, exists := h.rooms[client.RoomID]
 			if !exists {
 				room = &Room{
-					ID:      client.RoomID,
-					Clients: make(map[string]*Client),
+					ID:       client.RoomID,
+					Password: client.Password,
+					Clients:  make(map[string]*Client),
 				}
 				h.rooms[client.RoomID] = room
+			} else {
+				// Check password
+				if room.Password != "" && room.Password != client.Password {
+					h.mu.Unlock()
+					client.Conn.WriteJSON(Message{
+						Type:    "error",
+						Content: "Incorrect password",
+					})
+					client.Conn.Close()
+					continue
+				}
 			}
 			h.mu.Unlock()
 

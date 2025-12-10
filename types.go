@@ -11,6 +11,7 @@ type Client struct {
 	ID       string          `json:"id"`
 	Username string          `json:"username"`
 	RoomID   string          `json:"room_id"`
+	Password string          `json:"-"` // Password provided by client
 	Conn     *websocket.Conn `json:"-"`
 	Send     chan []byte     `json:"-"`
 }
@@ -32,7 +33,8 @@ type UserInfo struct {
 }
 
 type Room struct {
-	ID      string             `json:"id"`
-	Clients map[string]*Client `json:"-"`
-	mu      sync.RWMutex
+	ID       string             `json:"id"`
+	Password string             `json:"-"`
+	Clients  map[string]*Client `json:"-"`
+	mu       sync.RWMutex
 }

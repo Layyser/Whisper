@@ -11,6 +11,7 @@ Whisper is a real-time communication platform designed to demonstrate the power 
 -   **File Sharing:** Send files of any size directly peer-to-peer.
 -   **End-to-End Encryption:** All media and data are encrypted by WebRTC standards.
 -   **Latency Ping:** Verify your direct connection speed with the built-in P2P Ping tool.
+-   **Connection Stats:** Real-time monitoring of connection type (P2P/Relay) and bitrate.
 -   **Mobile Responsive:** Professional UI that adapts to phones, tablets, and desktops.
 -   **Dockerized:** Easy deployment with Docker Compose.
 

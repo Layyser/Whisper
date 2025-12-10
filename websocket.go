@@ -19,6 +19,7 @@ func handleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	username := r.URL.Query().Get("username")
 	roomID := r.URL.Query().Get("room")
+	password := r.URL.Query().Get("password")
 	if username == "" || roomID == "" {
 		conn.Close()
 		return
@@ -30,6 +31,7 @@ func handleWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		ID:       id,
 		Username: username,
 		RoomID:   roomID,
+		Password: password,
 		Conn:     conn,
 		Send:     make(chan []byte, 256),
 	}
