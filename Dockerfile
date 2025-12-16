@@ -20,7 +20,7 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /app/whisper .
 COPY frontend ./frontend
-COPY certs ./certs
+# Note: Not copying certs/ - Caddy handles HTTPS externally
 
 EXPOSE 8080
 
