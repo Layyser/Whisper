@@ -25,3 +25,10 @@ export const config = {
       },
     ],
 };
+
+export const backendConfig = {
+    // Replace 'null' with your backend URL if hosting frontend on GitHub Pages
+    // Example: "wss://your-public-ip:8080/ws" or "wss://your-domain.com/ws"
+    // Ensure you use wss:// (Secure WebSocket) if your frontend is on https://
+    url: "wss://whisper-ad.duckdns.org/ws"
+};

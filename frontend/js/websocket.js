@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { showToast, updateUserList } from './ui.js';
 import { handleSignaling } from './webrtc.js';
+import { backendConfig } from './config.js';
 
 export function join() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -20,9 +21,18 @@ export function join() {
         return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    state.ws = new WebSocket(`${protocol}//${host}/ws?username=${encodeURIComponent(state.myUsername)}&room=${encodeURIComponent(roomName)}&password=${encodeURIComponent(password)}`);
+    let wsUrl;
+    if (backendConfig.url) {
+        // Use configured backend URL
+        wsUrl = `${backendConfig.url}?username=${encodeURIComponent(state.myUsername)}&room=${encodeURIComponent(roomName)}&password=${encodeURIComponent(password)}`;
+    } else {
+        // Default to current host
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}/ws?username=${encodeURIComponent(state.myUsername)}&room=${encodeURIComponent(roomName)}&password=${encodeURIComponent(password)}`;
+    }
+
+    state.ws = new WebSocket(wsUrl);
 
     state.ws.onopen = async () => {
         document.getElementById('login').classList.add('hidden');
