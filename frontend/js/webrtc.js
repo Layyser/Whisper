@@ -16,11 +16,14 @@ export function createPeerConnection(peerId, includeVideo = false) {
     const pc = new RTCPeerConnection(config);
 
     pc.onconnectionstatechange = () => {
-        console.log(`Estat de connexió amb ${peerId}:`, pc.connectionState);
+        console.log(`Connection state with ${peerId}:`, pc.connectionState);
+        if (pc.connectionState === 'connected') {
+            console.log('WebRTC fully connected!');
+        }
     };
 
     pc.oniceconnectionstatechange = () => {
-        console.log(`Estat de connexió ICE amb ${peerId}:`, pc.iceConnectionState);
+        console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState);
         if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
             showToast(`Connection with ${peerId} failed/disconnected`);
             const connStatus = document.getElementById('connStatus');
@@ -39,8 +42,27 @@ export function createPeerConnection(peerId, includeVideo = false) {
         if (event.candidate) {
             send({ type: 'ice-candidate', to: peerId, data: event.candidate });
         } else {
-            console.log('Recopilació ICE completa');
+            console.log('ICE gathering complete');
             setTimeout(() => checkSelectedCandidate(pc, peerId), 2000);
+        }
+    };
+
+    // IMPORTANT: Configure ontrack BEFORE anything else to catch all track events
+    pc.ontrack = (event) => {
+        console.log('>>> ontrack event fired!', event.track.kind, 'streams:', event.streams.length);
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (event.streams && event.streams[0]) {
+            console.log('Setting remote stream from ontrack');
+            remoteVideo.srcObject = event.streams[0];
+            remoteVideo.play().catch(e => console.log('Remote video autoplay:', e));
+        } else {
+            // Fallback: create a new MediaStream if streams array is empty
+            console.log('No streams in event, creating new MediaStream');
+            if (!remoteVideo.srcObject) {
+                remoteVideo.srcObject = new MediaStream();
+            }
+            remoteVideo.srcObject.addTrack(event.track);
+            remoteVideo.play().catch(e => console.log('Remote video autoplay:', e));
         }
     };
 
@@ -52,15 +74,7 @@ export function createPeerConnection(peerId, includeVideo = false) {
     }
     state.peerConnections[peerId].dataChannel = dataChannel;
 
-    if (state.localStream) {
-        state.localStream.getTracks().forEach(track => {
-            pc.addTrack(track, state.localStream);
-        });
-    }
-
-    pc.ontrack = (event) => {
-        document.getElementById('remoteVideo').srcObject = event.streams[0];
-    };
+    // Don't add tracks here - they should be added explicitly before offer/answer
 
     pc.ondatachannel = (event) => {
         setupDataChannel(event.channel, peerId);
@@ -180,12 +194,20 @@ export async function getConnectionType(pc) {
 }
 
 export function requestCall(videoEnabled) {
-    if (!state.selectedUserId) return;
+    if (!state.selectedUserId) {
+        showToast('Please select a user first');
+        return;
+    }
     if (state.isInCall) {
         showToast('You are already in a call!');
         return;
     }
+    
+    // Reset any stale call state
+    state.incomingCallInfo = null;
+    state.expectingCall = false;
     state.pendingCallVideo = videoEnabled;
+    
     send({ type: 'call-request', to: state.selectedUserId, video: videoEnabled });
     showToast('Calling...');
 }
@@ -232,6 +254,8 @@ export function rejectCall() {
     send({ type: 'call-reject', to: state.incomingCallInfo.from });
     document.getElementById('incomingCallModal').classList.add('hidden');
     state.incomingCallInfo = null;
+    state.expectingCall = false;
+    state.isInCall = false;
 }
 
 export async function startCall(videoEnabled = false) {
@@ -239,56 +263,48 @@ export async function startCall(videoEnabled = false) {
 
     state.isInCall = true;
 
-    if (!state.localStream) {
-        try {
-            state.localStream = await navigator.mediaDevices.getUserMedia({
-                video: videoEnabled,
-                audio: true
-            });
-        } catch (err) {
-            console.error("Error accedint als dispositius:", err);
-            let errorMsg = 'Error accessing media devices.';
-            if (err.name === 'NotAllowedError') errorMsg = 'Permission denied. Please allow camera/mic access.';
-            if (err.name === 'NotFoundError') errorMsg = 'No camera/mic found.';
-            if (err.name === 'NotReadableError') errorMsg = 'Camera/mic is already in use.';
-            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-                errorMsg += ' (HTTPS required)';
-            }
-            showToast(errorMsg);
-            state.isInCall = false;
-            return;
+    // Always get a fresh media stream for each call
+    try {
+        // Stop any existing stream first
+        if (state.localStream) {
+            state.localStream.getTracks().forEach(track => track.stop());
+            state.localStream = null;
         }
-    } else {
-        state.localStream.getAudioTracks().forEach(track => track.enabled = true);
-        state.localStream.getVideoTracks().forEach(track => track.enabled = videoEnabled);
         
-        if (videoEnabled && state.localStream.getVideoTracks().length === 0) {
-             try {
-                const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                const videoTrack = videoStream.getVideoTracks()[0];
-                state.localStream.addTrack(videoTrack);
-            } catch (e) {
-                console.error("Could not add video track", e);
-            }
+        state.localStream = await navigator.mediaDevices.getUserMedia({
+            video: videoEnabled,
+            audio: true
+        });
+    } catch (err) {
+        console.error("Error accessing devices:", err);
+        let errorMsg = 'Error accessing media devices.';
+        if (err.name === 'NotAllowedError') errorMsg = 'Permission denied. Please allow camera/mic access.';
+        if (err.name === 'NotFoundError') errorMsg = 'No camera/mic found.';
+        if (err.name === 'NotReadableError') errorMsg = 'Camera/mic is already in use by another app.';
+        if (err.name === 'AbortError') errorMsg = 'Media access was aborted.';
+        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+            errorMsg += ' (HTTPS required)';
         }
+        showToast(errorMsg);
+        state.isInCall = false;
+        state.expectingCall = false;
+        return;
     }
 
-    // Ensure we have a fresh connection for the call
+    // Always create fresh connection for calls to ensure clean state
     let peerConn = state.peerConnections[state.selectedUserId];
     
-    // If connection exists but is closed or failed, recreate it
-    if (peerConn && peerConn.pc && (peerConn.pc.connectionState === 'closed' || peerConn.pc.connectionState === 'failed')) {
+    // Close any existing peer connection for calls
+    if (peerConn && peerConn.pc) {
         peerConn.pc.close();
-        delete state.peerConnections[state.selectedUserId];
-        peerConn = null;
     }
+    
+    // Create new peer connection (ontrack is already set up in createPeerConnection)
+    const pc = createPeerConnection(state.selectedUserId, false);
+    state.peerConnections[state.selectedUserId] = { pc, dataChannel: peerConn?.dataChannel };
+    peerConn = state.peerConnections[state.selectedUserId];
 
-    if (!peerConn || !peerConn.pc) {
-        const pc = createPeerConnection(state.selectedUserId, false);
-        state.peerConnections[state.selectedUserId] = { pc };
-        peerConn = state.peerConnections[state.selectedUserId];
-    }
-
+    // Show call UI
     document.getElementById('chatView').classList.add('hidden');
     document.getElementById('emptyState').classList.add('hidden');
     document.getElementById('callView').classList.remove('hidden');
@@ -297,23 +313,14 @@ export async function startCall(videoEnabled = false) {
     document.getElementById('callUsername').innerHTML = `${state.selectedUsername} <br><small>${callType}</small>`;
     
     document.getElementById('localVideo').srcObject = state.localStream;
-    
     document.getElementById('localVideo').style.display = videoEnabled ? 'block' : 'none';
 
-    // Add tracks if not already added
-    const senders = peerConn.pc.getSenders();
+    // Add all tracks to peer connection BEFORE creating offer
+    console.log('Adding local tracks to PC...');
     state.localStream.getTracks().forEach(track => {
-        const sender = senders.find(s => s.track && s.track.kind === track.kind);
-        if (!sender) {
-            peerConn.pc.addTrack(track, state.localStream);
-        } else {
-            sender.replaceTrack(track);
-        }
+        console.log('Adding track to PC:', track.kind);
+        peerConn.pc.addTrack(track, state.localStream);
     });
-
-    peerConn.pc.ontrack = (event) => {
-        document.getElementById('remoteVideo').srcObject = event.streams[0];
-    };
 
     const offer = await peerConn.pc.createOffer();
     await peerConn.pc.setLocalDescription(offer);
@@ -323,48 +330,49 @@ export async function startCall(videoEnabled = false) {
 }
 
 export function endCall(notifyPeer = true) {
-    if (state.statsInterval) clearInterval(state.statsInterval);
-    state.isInCall = false;
+    console.log('endCall called, notifyPeer:', notifyPeer);
     
-    if (state.selectedUserId) {
-        if (notifyPeer) {
-            send({ type: 'end-call', to: state.selectedUserId });
-        }
-
-        if (state.peerConnections[state.selectedUserId]) {
-            const peerConn = state.peerConnections[state.selectedUserId];
-            
-            if (peerConn.pc) {
-                const senders = peerConn.pc.getSenders();
-                senders.forEach(sender => {
-                    if (sender.track) {
-                        // Don't remove track, just stop sending? 
-                        // Actually, removing track is cleaner for renegotiation next time
-                        peerConn.pc.removeTrack(sender);
-                    }
-                });
-                // We don't close the PC here to keep DataChannel alive for chat
-                // But for a clean call state, maybe we should renegotiate to remove tracks?
-                // Or just keep it open. The user issue was "can't call again".
-                // If we close PC, we lose chat.
-                // Let's try to keep PC open but stop media.
-            }
-        }
+    if (state.statsInterval) {
+        clearInterval(state.statsInterval);
+        state.statsInterval = null;
+    }
+    
+    // Reset all call-related state
+    state.isInCall = false;
+    state.expectingCall = false;
+    state.pendingCallVideo = false;
+    state.incomingCallInfo = null;
+    
+    if (state.selectedUserId && notifyPeer) {
+        send({ type: 'end-call', to: state.selectedUserId });
     }
 
+    // Fully stop and release all media tracks
     if (state.localStream) {
         state.localStream.getTracks().forEach(track => {
-            track.enabled = false;
+            track.stop(); // This releases the hardware (mic/camera)
         });
+        state.localStream = null; // Clear the stream so we get fresh one next call
     }
 
-    state.incomingCallInfo = null;
+    // Clear video elements
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('localVideo').srcObject = null;
+    
+    // Reset connection stats display
+    const connStatus = document.getElementById('connStatus');
+    const connType = document.getElementById('connType');
+    const connBitrate = document.getElementById('connBitrate');
+    if (connStatus) connStatus.textContent = 'Connecting...';
+    if (connType) connType.textContent = '-';
+    if (connBitrate) connBitrate.textContent = '0 kbps';
+    
+    // Show chat view
     document.getElementById('callView').classList.add('hidden');
     document.getElementById('chatView').classList.remove('hidden');
     document.getElementById('emptyState').classList.add('hidden');
     
+    // Reset button states
     const audioBtn = document.getElementById('audioBtn');
     const videoBtn = document.getElementById('videoBtn');
     if (audioBtn) {
@@ -406,19 +414,41 @@ export async function handleSignaling(msg) {
         showToast('Call rejected or User Busy');
         state.incomingCallInfo = null;
         state.isInCall = false;
+        state.expectingCall = false;
+        state.pendingCallVideo = false;
         
     } else if (msg.type === 'offer') {
-        if (!peerConn) {
+        console.log('Received offer from:', msg.from, 'expectingCall:', state.expectingCall, 'isInCall:', state.isInCall);
+        
+        // For calls, always create fresh peer connection to ensure clean state
+        if (state.expectingCall || state.isInCall) {
+            // Close existing connection if any
+            if (peerConn && peerConn.pc) {
+                peerConn.pc.close();
+            }
+            const pc = createPeerConnection(msg.from, false);
+            state.peerConnections[msg.from] = { pc, dataChannel: peerConn?.dataChannel };
+            peerConn = state.peerConnections[msg.from];
+        } else if (!peerConn) {
             const pc = createPeerConnection(msg.from, false);
             state.peerConnections[msg.from] = { pc };
             peerConn = state.peerConnections[msg.from];
         }
         
+        // ontrack is already configured in createPeerConnection
+        
         await peerConn.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
         
-        if (state.expectingCall && !state.localStream) {
-             try {
+        if (state.expectingCall) {
+            // Stop any existing stream first
+            if (state.localStream) {
+                state.localStream.getTracks().forEach(track => track.stop());
+                state.localStream = null;
+            }
+            
+            try {
                 const useVideo = state.incomingCallInfo ? state.incomingCallInfo.video : true;
+                console.log('Getting user media for incoming call, video:', useVideo);
                 state.localStream = await navigator.mediaDevices.getUserMedia({
                     video: useVideo,
                     audio: true
@@ -427,47 +457,43 @@ export async function handleSignaling(msg) {
                 document.getElementById('localVideo').srcObject = state.localStream;
                 document.getElementById('localVideo').style.display = useVideo ? 'block' : 'none';
                 
+                // Add all tracks to peer connection BEFORE creating answer
+                console.log('Adding local tracks to PC for answer...');
                 state.localStream.getTracks().forEach(track => {
+                    console.log('Adding track to PC:', track.kind);
                     peerConn.pc.addTrack(track, state.localStream);
                 });
                 
                 document.getElementById('chatView').classList.add('hidden');
+                document.getElementById('emptyState').classList.add('hidden');
                 document.getElementById('callView').classList.remove('hidden');
                 
                 const callType = useVideo ? 'Video Call' : 'Voice Call';
                 const callerName = state.selectedUsername || msg.from;
                 document.getElementById('callUsername').innerHTML = `${callerName} <br><small>${callType}</small>`;
                 
+                startStatsMonitoring(peerConn.pc);
+                
             } catch (err) {
                 console.error("Could not get local media", err);
                 showToast('Error accessing media devices.');
+                state.isInCall = false;
+                state.expectingCall = false;
+                return;
             }
             state.expectingCall = false;
-        } else if (state.expectingCall && state.localStream) {
-             const useVideo = state.incomingCallInfo ? state.incomingCallInfo.video : true;
-             
-             state.localStream.getAudioTracks().forEach(track => track.enabled = true);
-             state.localStream.getVideoTracks().forEach(track => track.enabled = useVideo);
-
-             document.getElementById('localVideo').style.display = useVideo ? 'block' : 'none';
-
-             document.getElementById('chatView').classList.add('hidden');
-             document.getElementById('callView').classList.remove('hidden');
-             
-             const callType = useVideo ? 'Video Call' : 'Voice Call';
-             const callerName = state.selectedUsername || msg.from;
-             document.getElementById('callUsername').innerHTML = `${callerName} <br><small>${callType}</small>`;
-             
-             state.expectingCall = false;
         }
 
         const answer = await peerConn.pc.createAnswer();
         await peerConn.pc.setLocalDescription(answer);
+        console.log('Sending answer to:', msg.from);
         send({ type: 'answer', to: msg.from, data: answer });
         
     } else if (msg.type === 'answer') {
+        console.log('Received answer from:', msg.from);
         if (peerConn && peerConn.pc) {
             await peerConn.pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+            console.log('Remote description set, connection state:', peerConn.pc.connectionState);
         }
     } else if (msg.type === 'ice-candidate') {
         if (peerConn && peerConn.pc) {
