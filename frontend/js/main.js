@@ -1,9 +1,10 @@
+// Entrada principal del cliente: importa WS, UI y funciones WebRTC
 import { join } from './websocket.js';
 import { goBack, selectUser } from './ui.js';
 import { requestCall, acceptCall, rejectCall, toggleAudio, toggleVideo, endCall, sendPing, sendFile } from './webrtc.js';
 import { state } from './state.js';
 
-// Expose functions to global scope for HTML onclick handlers
+// Exponer funciones al scope global para los onclick del HTML
 window.join = join;
 window.goBack = goBack;
 window.requestCall = requestCall;
@@ -15,7 +16,7 @@ window.endCall = endCall;
 window.sendPing = sendPing;
 window.sendFile = sendFile;
 
-// Handle file input
+// Maneja la seleccion de ficheros y los envia por DataChannel
 window.handleFileSelect = async (event) => {
     const file = event.target.files[0];
     if (!file || !state.selectedUserId) return;
@@ -29,6 +30,7 @@ window.handleFileSelect = async (event) => {
     
     const dataChannel = peerConn.dataChannel;
     
+    // Avisamos al peer de que empezamos un archivo
     dataChannel.send(JSON.stringify({
         type: 'file-start',
         name: file.name,
@@ -50,10 +52,7 @@ window.handleFileSelect = async (event) => {
             dataChannel.send(JSON.stringify({ type: 'file-end' }));
             const url = URL.createObjectURL(file);
             
-            // Need to import storeMessage/displayMessageInDOM or expose them
-            // For now, let's assume the data channel message handler on the other side handles it
-            // But we need to show it locally too.
-            // This part needs refactoring to be cleaner, but for now:
+            // Guardamos y pintamos tambien en local para que aparezca en nuestro chat
             import('./ui.js').then(ui => {
                 ui.storeMessage(state.selectedUserId, `📎 ${file.name}`, true, true, url, file.name);
                 ui.displayMessageInDOM(`📎 ${file.name}`, true, new Date(), true, url, file.name);
@@ -70,6 +69,7 @@ window.handleFileSelect = async (event) => {
     event.target.value = '';
 };
 
+// Envia texto por el DataChannel si esta listo
 window.sendMessage = () => {
     const input = document.getElementById('messageBox');
     const text = input.value.trim();
@@ -94,6 +94,7 @@ window.sendMessage = () => {
     }
 };
 
+// Permite enviar con Enter
 window.handleEnter = (event) => {
     if (event.key === 'Enter') {
         window.sendMessage();

@@ -1,9 +1,11 @@
+// Logica de WebRTC: llamadas, datachannel y senalizacion
 import { state } from './state.js';
 import { config } from './config.js';
 import { send } from './websocket.js';
 import { showToast, updateConnectionStatus, storeMessage, displayMessageInDOM, updateUserList, loadMessageHistory } from './ui.js';
 
 export async function initiatePeerConnection(userId) {
+    // Creamos PC y lanzamos una oferta inicial sin medios (solo datachannel)
     const pc = createPeerConnection(userId, false);
     state.peerConnections[userId] = { pc };
     
@@ -66,6 +68,7 @@ export function createPeerConnection(peerId, includeVideo = false) {
         }
     };
 
+    // Creamos un DataChannel para chat/archivos
     const dataChannel = pc.createDataChannel("chat");
     setupDataChannel(dataChannel, peerId);
     
@@ -88,6 +91,7 @@ export function createPeerConnection(peerId, includeVideo = false) {
 }
 
 function setupDataChannel(dataChannel, peerId) {
+    // Maneja los eventos del canal de datos (texto, ping, archivos)
     dataChannel.onopen = () => {
         console.log('Data channel opened with', peerId);
         if (state.selectedUserId === peerId) {
@@ -194,6 +198,7 @@ export async function getConnectionType(pc) {
 }
 
 export function requestCall(videoEnabled) {
+    // Envia una peticion de llamada al peer seleccionado
     if (!state.selectedUserId) {
         showToast('Please select a user first');
         return;
@@ -259,6 +264,7 @@ export function rejectCall() {
 }
 
 export async function startCall(videoEnabled = false) {
+    // Arranca una llamada: pide micro/cam y envia offer
     if (!state.selectedUserId) return;
 
     state.isInCall = true;
@@ -389,6 +395,7 @@ export async function handleSignaling(msg) {
     let peerConn = state.peerConnections[msg.from];
     
     if (msg.type === 'call-request') {
+        // Notificacion de llamada entrante
         if (state.isInCall) {
             // Auto-reject if busy
             send({ type: 'call-reject', to: msg.from });
@@ -418,6 +425,7 @@ export async function handleSignaling(msg) {
         state.pendingCallVideo = false;
         
     } else if (msg.type === 'offer') {
+        // Recibimos offer: preparamos PC y respondemos con answer
         console.log('Received offer from:', msg.from, 'expectingCall:', state.expectingCall, 'isInCall:', state.isInCall);
         
         // For calls, always create fresh peer connection to ensure clean state
@@ -496,6 +504,7 @@ export async function handleSignaling(msg) {
             console.log('Remote description set, connection state:', peerConn.pc.connectionState);
         }
     } else if (msg.type === 'ice-candidate') {
+        // Candidatos ICE para completar la conectividad
         if (peerConn && peerConn.pc) {
             await peerConn.pc.addIceCandidate(new RTCIceCandidate(msg.data));
         }

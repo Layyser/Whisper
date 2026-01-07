@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -33,18 +32,7 @@ func main() {
 		port = "8080"
 	}
 
-	// Comprovar si existeixen els certificats per a HTTPS
-	// Check if certificates exist for HTTPS
-	certFile := "certs/cert.pem"
-	keyFile := "certs/key.pem"
-
-	if _, err := os.Stat(certFile); err == nil {
-		if _, err := os.Stat(keyFile); err == nil {
-			fmt.Printf("Server on https://localhost:%s (Secure)\n", port)
-			log.Fatal(http.ListenAndServeTLS(":"+port, certFile, keyFile, nil))
-		}
-	}
-
-	fmt.Printf("Server on http://localhost:%s (Not Secure - Media devices might fail)\n", port)
+	// TLS is terminated by Caddy (reverse proxy). This server only needs HTTP.
+	log.Printf("Server listening on http://0.0.0.0:%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

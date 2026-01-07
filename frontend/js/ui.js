@@ -1,7 +1,9 @@
+// Funciones de UI: lista de usuarios y chat
 import { state } from './state.js';
 import { initiatePeerConnection, getConnectionType } from './webrtc.js';
 
 export function showToast(message) {
+    // Mensajes flotantes cortos en pantalla
     const container = document.getElementById('toast-container');
     if (!container) return;
     
@@ -60,6 +62,7 @@ export function updateUserList(users) {
 }
 
 export function selectUser(userId, username) {
+    // Marca usuario activo y abre el chat correspondiente
     state.selectedUserId = userId;
     state.selectedUsername = username;
     
@@ -94,6 +97,7 @@ export function selectUser(userId, username) {
 }
 
 export function goBack() {
+    // Vuelve al estado inicial en movil (cierra chat/call)
     document.querySelector('.main-content').classList.remove('active');
     
     setTimeout(() => {
@@ -108,6 +112,7 @@ export function goBack() {
 }
 
 export async function updateConnectionStatus(userId) {
+    // Muestra si el DataChannel esta conectado y el tipo de ruta
     const peerConn = state.peerConnections[userId];
     const statusDiv = document.getElementById('chatUsername');
     
@@ -125,6 +130,7 @@ export async function updateConnectionStatus(userId) {
 }
 
 export function loadMessageHistory(userId) {
+    // Pinta los mensajes guardados en memoria para ese usuario
     const messagesContainer = document.getElementById('messages');
     messagesContainer.innerHTML = '';
     
@@ -142,6 +148,7 @@ export function loadMessageHistory(userId) {
 }
 
 export function displayMessageInDOM(text, isSent, timestamp, isFile = false, fileUrl = null, filename = null) {
+    // Inserta un mensaje en el DOM (texto o archivo)
     const messages = document.getElementById('messages');
     const msg = document.createElement('div');
     msg.className = `message ${isSent ? 'sent' : 'received'}`;
@@ -167,6 +174,7 @@ export function displayMessageInDOM(text, isSent, timestamp, isFile = false, fil
 }
 
 export function storeMessage(userId, text, isSent, isFile = false, fileUrl = null, filename = null) {
+    // Guarda el mensaje en el historial local (no persistente)
     if (!state.messageHistory[userId]) {
         state.messageHistory[userId] = [];
     }

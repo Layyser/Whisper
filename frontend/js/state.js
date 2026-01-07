@@ -1,3 +1,4 @@
+// Estado global en memoria del cliente (no se persiste)
 export const state = {
     ws: null,
     myId: null,

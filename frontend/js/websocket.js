@@ -1,9 +1,11 @@
+// Gestiona la conexion WebSocket para la senalizacion
 import { state } from './state.js';
 import { showToast, updateUserList } from './ui.js';
 import { handleSignaling } from './webrtc.js';
 import { backendConfig } from './config.js';
 
 export function join() {
+    // Avisamos si no hay acceso a media (suele ser por falta de HTTPS)
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         showToast('Warning: Media devices are not accessible. This usually happens when not using HTTPS or if permissions are blocked. You may be able to chat but video/audio calls will fail.');
     }
@@ -21,12 +23,13 @@ export function join() {
         return;
     }
 
+    // Construimos la URL WS segun config o el host actual
     let wsUrl;
     if (backendConfig.url) {
-        // Use configured backend URL
+        // Usa el endpoint configurado (ej: dominio publico)
         wsUrl = `${backendConfig.url}?username=${encodeURIComponent(state.myUsername)}&room=${encodeURIComponent(roomName)}&password=${encodeURIComponent(password)}`;
     } else {
-        // Default to current host
+        // Por defecto usa el mismo host donde se sirve el frontend
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         wsUrl = `${protocol}//${host}/ws?username=${encodeURIComponent(state.myUsername)}&room=${encodeURIComponent(roomName)}&password=${encodeURIComponent(password)}`;
@@ -35,6 +38,7 @@ export function join() {
     state.ws = new WebSocket(wsUrl);
 
     state.ws.onopen = async () => {
+        // Mostrar la app y guardar la info del usuario/sala
         document.getElementById('login').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
         document.getElementById('myUsername').textContent = `${state.myUsername} (Room: ${roomName})`;
@@ -44,6 +48,7 @@ export function join() {
         }
     };
 
+    // Despachamos los mensajes entrantes del servidor
     state.ws.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
 

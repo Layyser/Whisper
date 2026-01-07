@@ -33,7 +33,7 @@ Whisper is a real-time communication platform designed to demonstrate the power 
 
 ### Infrastructure
 -   **Containerization:** Docker & Docker Compose (Alpine Linux base).
--   **Certificates:** OpenSSL for self-signed certificates (required for WebRTC media access).
+-   **TLS/HTTPS:** Caddy reverse proxy (HTTPS for WebRTC secure context).
 
 ---
 
@@ -90,10 +90,10 @@ To prove the connection is truly Peer-to-Peer:
 
 3.  **Access the App:**
     -   Open `https://YOUR_LOCAL_IP:8080` (e.g., `https://192.168.1.50:8080`) on your computer and mobile phone.
-    -   **Important:** Since we use self-signed certificates, you must accept the security warning in your browser ("Advanced" -> "Proceed to...").
+    -   If you use a public domain with Caddy, HTTPS is handled automatically.
 
 ### Why HTTPS?
-WebRTC requires a "Secure Context" (HTTPS or localhost) to access the microphone and camera. We generate self-signed certificates automatically in the Docker build to enable this on your local network.
+WebRTC requires a "Secure Context" (HTTPS or localhost) to access the microphone and camera. In this project, HTTPS is provided by Caddy (reverse proxy) when deployed.
 
 ---
 
